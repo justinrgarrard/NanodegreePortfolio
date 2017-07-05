@@ -1,0 +1,803 @@
+College Scorecard Analysis by Justin "Roy" Garrard
+========================================================
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, packages}
+# Load all of the packages that you end up using in your analysis in this code
+# chunk.
+
+# Notice that the parameter "echo" was set to FALSE for this code chunk. This
+# prevents the code from displaying in the knitted HTML output. You should set
+# echo=FALSE for all code chunks in your file, unless it makes sense for your
+# report to show the code that generated a particular plot.
+
+# The other parameters for "message" and "warning" should also be set to FALSE
+# for other code chunks once you have verified that each plot comes out as you
+# want it to. This will clean up the flow of your report.
+
+library(ggplot2)
+library(ggthemes)
+library(GGally)
+library(plyr)
+library(dplyr)
+library(Rmisc)
+library(scales)
+```
+
+```{r echo=FALSE, Load_the_Data}
+# Load the Data
+ed_data <- read.csv("MERGED2014_15_PP.csv")
+
+# Strip the Data Down
+# (Location, Admissions, Entry Tests, )
+ed_data <- subset(ed_data, ed_data$HIGHDEG >= 4)
+ed_data <- subset(ed_data, select = c(UNITID, INSTNM, STABBR, CONTROL, REGION, 
+                                      LATITUDE, LONGITUDE, ADM_RATE_ALL, 
+                                      TUITIONFEE_IN, TUITIONFEE_OUT, UGDS,
+                                      RET_FT4, GRAD_DEBT_MDN, WDRAW_DEBT_MDN,
+                                      C150_4))
+
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Clean_the_Data}
+# Clear out a few weird points with a "zero" region
+ed_data <- subset(ed_data, ed_data$REGION != 0)
+
+# Remove the University of Phoenix from the data pool, but keep it in a variable
+# It's a fascinating outlier that would be worth studying on its own
+phoenix <- subset(ed_data, ed_data$UNITID == 484613)
+ed_data <- subset(ed_data, ed_data$UNITID != 484613)
+
+# Ensure numeric variables are treated as such
+ed_data$TUITIONFEE_IN <- as.numeric(as.character(ed_data$TUITIONFEE_IN))
+ed_data$TUITIONFEE_OUT <- as.numeric(as.character(ed_data$TUITIONFEE_OUT))
+ed_data$ADM_RATE_ALL <- as.numeric(as.character(ed_data$ADM_RATE_ALL))
+ed_data$GRAD_DEBT_MDN <- as.numeric(as.character(ed_data$GRAD_DEBT_MDN))
+ed_data$WDRAW_DEBT_MDN <- as.numeric(as.character(ed_data$WDRAW_DEBT_MDN))
+ed_data$LONGITUDE <- as.numeric(as.character(ed_data$LONGITUDE))
+ed_data$LATITUDE <- as.numeric(as.character(ed_data$LATITUDE))
+ed_data$UGDS <- as.numeric(as.character(ed_data$UGDS))
+ed_data$RET_FT4 <- as.numeric(as.character(ed_data$RET_FT4))
+ed_data$C150_4 <- as.numeric(as.character(ed_data$C150_4))
+
+# Establish certain variables as discrete categories
+ed_data$REGION <- factor(ed_data$REGION, ordered=TRUE)
+ed_data$CONTROL <- factor(ed_data$CONTROL, ordered=TRUE)
+
+# Change out CONTROL values for understandable strings
+ed_data$CONTROL <- revalue(ed_data$CONTROL, c("1"="Public", 
+                                              "2"="Private Non-Profit", 
+                                              "3"="Private For-Profit"))
+
+# Do some renaming for readability
+names(ed_data)[names(ed_data) == 'INSTNM'] <- 'NAME'
+names(ed_data)[names(ed_data) == 'STABBR'] <- 'STATE'
+names(ed_data)[names(ed_data) == 'CONTROL'] <- 'FUNDING_TYPE'
+names(ed_data)[names(ed_data) == 'UGDS'] <- 'UNDERGRAD_ENROLL'
+names(ed_data)[names(ed_data) == 'RET_FT4'] <- 'RETENTION'
+names(ed_data)[names(ed_data) == 'C150_4'] <- 'COMPLETION_FIVE_YRS'
+
+```
+
+The data explored in this report comes from College Scorecard.
+College Scorecard is a product of the U.S. Department of Education
+and contains college statistics from 1996 to 2014, though this particular
+analysis will only be looking at four-year universities from the 2014 data.
+
+# Univariate Plots Section
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Univariate_Plots_Summary}
+# Summary of variables
+summary(subset(ed_data, select=c(-UNITID, -NAME)))
+
+```
+There are roughly 2000 points of data, each of which was constrained to 
+fifteen variables (name and ID number were excluded from the summary).
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, By_Location}
+# University by Coordiantes
+ggplot(aes(x=LONGITUDE, LATITUDE),
+       data=subset(ed_data, ed_data$LONGITUDE < 0 &
+                     ed_data$LONGITUDE > -130 &
+                     ed_data$LATITUDE > 25)) +
+       geom_jitter(alpha=0.25) +
+       ggtitle('Mainland U.S. Universities') 
+
+
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, By_Location_2}
+west_count <- subset(ed_data, ed_data$LONGITUDE < -100 &
+                       ed_data$LONGITUDE > -130)
+east_count <- subset(ed_data, ed_data$LONGITUDE >= -100 &
+                       ed_data$LONGITUDE < -65)
+non_mainland <- subset(ed_data, ed_data$REGION == 9)
+```
+
+The dataset shows that there are approximately four times as many universities 
+east of the -100 longitude line than there are west of the line. One interesting
+note is that the heat map of university placement closely matches NASA light
+pollution images, implying a correlation of universities to urban areas.
+
+
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, By_Region}
+# University by Region
+ggplot(aes(x=REGION), data=ed_data) + geom_histogram(stat="count")
+
+```
+
+The dataset helpfully breaks up location information into nine regions. Excluding
+the ninth region (which covers U.S. Territories like Puerto Rico), the fewest
+universities are found in region seven. A more visual representation of this
+data can be found in the Bivariate Plots section.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=8, State}
+# University by Coordiantes
+ggplot(aes(x=STATE),
+       data=ed_data) +
+       geom_histogram(stat='count') +
+       coord_flip() +
+       scale_x_discrete(limits=rev(levels(ed_data$STATE))) +
+       ggtitle('Universities by State or Territory') 
+
+```
+
+California is the leader in regards to universities per state. New York follows
+a reasonable distance behind. Puerto Rico manages to surpass several states, 
+while many of the other territories lack even a single university.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, By_Tuition}
+# University by Tuition
+in_state <- ggplot(aes(x=TUITIONFEE_IN),
+                   data=subset(ed_data, !is.na(ed_data$TUITIONFEE_IN))) +
+  geom_histogram(binwidth = 1000) +
+  xlab('In-State Tuition in Dollars')
+
+out_state <- ggplot(aes(x=TUITIONFEE_OUT), 
+                    data=subset(ed_data, !is.na(ed_data$TUITIONFEE_OUT))) +
+  geom_histogram(binwidth = 1000) +
+  xlab('Out-Of-State Tuition in Dollars')
+
+multiplot(in_state, out_state)
+
+```
+```{r echo=FALSE, message=FALSE, warning=FALSE, By_Tuition_2}
+print('In-State Tuition Summary')
+summary(ed_data$TUITIONFEE_IN)
+print('Out-of-State Tuition Summary')
+summary(ed_data$TUITIONFEE_OUT)
+```
+
+The median In-State Tuition is slightly above 15,000. The median Out-of-State
+Tuition is close to 21,000.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Debt}
+# University by Debt
+grad_debt <- ggplot(aes(x=GRAD_DEBT_MDN),
+                    data=subset(ed_data, !is.na(ed_data$GRAD_DEBT_MDN))) +
+  geom_histogram(binwidth = 1000) +
+  coord_cartesian(xlim=c(0,50000)) +
+  xlab('Reported Median Debt for Graduates')
+
+wdraw_debt <- ggplot(aes(x=WDRAW_DEBT_MDN),
+                     data=subset(ed_data, !is.na(ed_data$WDRAW_DEBT_MDN))) +
+  geom_histogram(binwidth = 1000) +
+  coord_cartesian(xlim=c(0,50000)) +
+  xlab('Reported Median Debt for Dropouts')
+
+multiplot(grad_debt, wdraw_debt)
+```
+```{r echo=FALSE, message=FALSE, warning=FALSE, Debt_2}
+print('Graduate Debt Summary')
+summary(ed_data$GRAD_DEBT_MDN)
+print('Dropout Debt Summary')
+summary(ed_data$WDRAW_DEBT_MDN)
+```
+
+Predictably, graduating students have significantly higher median debt levels
+than those who withdraw from university. Also of note is how much more tightly 
+clustered and consistent dropout debt is versus graduate debt. 
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Undergrad_Enrollment}
+# University Undergraduate Enrollments
+enroll <- ggplot(aes(x=UNDERGRAD_ENROLL), 
+                 data=subset(ed_data,
+                             !is.na(ed_data$UNDERGRAD_ENROLL) &
+                               ed_data$UNDERGRAD_ENROLL > 0)) +
+  geom_histogram(binwidth=1000) +
+  coord_cartesian(xlim = c(0,50000)) +
+  xlab('Reported Enrollment')
+
+enroll_log <- ggplot(aes(x=UNDERGRAD_ENROLL),
+                     data=subset(ed_data,
+                                 !is.na(ed_data$UNDERGRAD_ENROLL) &
+                                   ed_data$UNDERGRAD_ENROLL > 0)) +
+  geom_histogram(binwidth=500) +
+  coord_cartesian(xlim = c(0,10000)) +
+  xlab('Reported Enrollment (0-10000)')
+
+multiplot(enroll, enroll_log)
+```
+```{r echo=FALSE, message=FALSE, warning=FALSE, Undergrad_Enrollment_2}
+print('Undergraduate Enrollment Summary')
+summary(ed_data$UNDERGRAD_ENROLL)
+max_enroll <- subset(ed_data, ed_data$UNDERGRAD_ENROLL > 10000)
+```
+
+Enrollment varies wildly, which is to expected given the numerous sizes of
+universities. One notable outlier in the data is the University of Phoenix, 
+which is the only university to report a six figure enrollment (151,600). 
+This data point has been excluded for most of the analysis in this report.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Completion}
+# University by Debt
+ggplot(aes(x=COMPLETION_FIVE_YRS), 
+       data=subset(ed_data,
+                   !is.na(ed_data$COMPLETION_FIVE_YRS))) +
+  geom_histogram() +
+  xlab('Students Who Graduated Within Five Years')
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE,Completion_3}
+print('Undergraduate Five-Year Completion Summary')
+summary(ed_data$COMPLETION_FIVE_YRS)
+```
+
+Graduation rates follow a surprisingly normal distribution. There are a 
+worrisome number of universities (~50) whose completion rates fall below 0.1. 
+These values are distinct from NA, so it would seem that they were deliberatly 
+reported as such. Of note is their funding types (rarely public) and admission
+rates (generally an NA value).
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Admission_Rate}
+# University by Admissions
+ggplot(aes(x=ADM_RATE_ALL),
+       data=subset(ed_data, !is.na(ed_data$ADM_RATE_ALL))) +
+  geom_histogram() +
+  xlab('Admission Rate')
+```
+```{r echo=FALSE, message=FALSE, warning=FALSE, Admission_2}
+print('Admission Rates Summary')
+summary(ed_data$ADM_RATE_ALL)
+```
+
+Admission rates trend towards accepting more often than rejecting, but I imagine
+that this varies by other conditions (tution, university funding type, etc.)
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Retention}
+# University by Retention
+ggplot(aes(x=RETENTION),
+       data=subset(ed_data, !is.na(ed_data$RETENTION))) +
+  geom_histogram() +
+  xlab('Retention Rate')
+```
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Retention_2}
+print('Retention Rates Summary')
+summary(ed_data$RETENTION)
+no_retention <- subset(ed_data, ed_data$RETENTION < 0.1)
+no_ret_or_com <- subset(ed_data, ed_data$RETENTION < 0.1 &
+                          ed_data$COMPLETION_FIVE_YRS < 0.1)
+```
+
+There is a concerning number of 0.0 and 0.01 retention rates. As before though,
+the data draws a distinction between 0.0 and NA, so these were likely reported 
+as such. Again, these points are similar in that they're not public universities
+and rarely have a listed admission rate.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Type}
+# University by Type
+ggplot(aes(x=FUNDING_TYPE), 
+       data=subset(ed_data, !is.na(ed_data$FUNDING_TYPE))) +
+  geom_histogram(stat="count") +
+  xlab('Universities by Type')
+
+```
+
+Private Non-Profit schools make up a decided majority of the data points.
+
+
+# Univariate Analysis
+
+### What is the structure of your dataset?
+
+There are roughly 2000 points of data, each of which was constrained to fifteen 
+variables. The variables themselves can be grouped into four categories:
+
+* Location (latitude, longitude, state, region)
+* Finance (tuitionfee_in, tuitionfee_out, grad_debt_mdn, wdraw_debt_mdn)
+* Admission (adm_rate_all, undergrad_enrollment, retention, completion_five_yrs)
+* Identification (unitid, name, funding type)
+
+### What is/are the main feature(s) of interest in your dataset?
+
+The primary feature of interest is the completion rate, which offers a 
+quantitative view of a university's effectiveness. A low completion rate might 
+imply exclusivity, but it also translates into students with debt and nothing to
+show for it.
+
+### What other features in the dataset do you think will help support your \
+investigation into your feature(s) of interest?
+
+I anticipate that the funding type (public, private) and size (admission rate)
+will be strong indicators. Other qualities, such as location and retention, may 
+also shed some light on the situation.
+
+### Did you create any new variables from existing variables in the dataset?
+
+No, though it may be handy to have some form of "success quotient" relating
+factors such as completion rate and low tuition.
+
+### Of the features you investigated, were there any unusual distributions? \
+Did you perform any operations on the data to tidy, adjust, or change the form \
+of the data? If so, why did you do this?
+
+* University enrollment was adjusted for easier viewing, as there is a
+significant spread in the amounts of students admitted.
+
+* Five year completion rates had an unusually normal distribution.
+
+* The ninth region (U.S. territories) and Alaska were excluded from the
+longitude/latitude scatter plot. This was done for easier viewing.
+
+* The University of Phoenix was removed from the dataset, as its enrollment was
+more than 70 times the median. It's many sub-schools were kept.
+
+
+# Bivariate Plots Section
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=15, fig.width=15, Bivariate_Plots}
+ggcorr(subset(subset(ed_data,
+                       select=c(-STATE, -UNITID, -NAME)),
+                ed_data$REGION != 9), label=TRUE, type='lower')
+
+# It's difficult to fit the label names in the plot.
+# Seems to be a known issue though.
+```
+
+Other than in-state and out-of-state tuition, there are no obvious correlations.
+There are a few promising leads though, including tuition/completion rate and 
+retention/completion rate.
+
+
+```{r echo=FALSE, By_Location_and_Region_2}
+# University by Coordiantes
+ggplot(aes(x=LONGITUDE, LATITUDE),
+       data=subset(ed_data,
+                   ed_data$LONGITUDE < 0 &
+                     ed_data$LONGITUDE > -130 &
+                     ed_data$LATITUDE > 25)) +
+       geom_jitter(aes(colour=REGION), alpha=0.25) +
+       ggtitle('Mainland U.S. Universities') 
+
+```
+
+```{r echo=FALSE, By_Region_2}
+# University by Coordiantes
+ggplot(aes(x=LONGITUDE, LATITUDE),
+       data=subset(ed_data, ed_data$LONGITUDE < 0 & ed_data$LONGITUDE > -130 &
+                     ed_data$LATITUDE > 25)) +
+       geom_jitter(aes(colour=REGION), alpha=0.25) +
+       facet_wrap(~subset(ed_data$REGION, ed_data$LONGITUDE < 0 &
+                            ed_data$LONGITUDE > -130 &
+                            ed_data$LATITUDE > 25), ncol=3) +
+       ggtitle('Mainland U.S. Universities') 
+
+```
+
+Adding color to the geographic maps helps to better demonstrate the shape of the
+regions.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=5, fig.width=8, Completion_and_Region}
+# 
+comp_region <- ggplot(aes(x=REGION, y=COMPLETION_FIVE_YRS), data=ed_data) +
+       geom_boxplot() +
+       theme(axis.title.x=element_blank()) +
+       ggtitle('Completion Rate by Region') 
+
+comp_region_2 <- ggplot(aes(x=REGION, y=COMPLETION_FIVE_YRS), data=ed_data) +
+       geom_boxplot() +
+       coord_cartesian(ylim=c(0.25, 0.75))
+
+multiplot(comp_region, comp_region_2)
+
+```
+
+
+There's considerable variation between regions with regards to completion rates.
+The Northeast regions (1, 2, 3) and West Coast region (8) have a median above
+0.5. The Northwest (7), Central (4), and South (5, 6) regions fall below 0.5.
+U.S. Territories (9) are particularly afflicted, with a median completion rate
+near 0.3.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Completion_and_Type}
+# 
+ggplot(aes(x=FUNDING_TYPE, y=COMPLETION_FIVE_YRS), data=ed_data) +
+       geom_boxplot() +
+       ggtitle('Completion Rate by University Type') 
+
+```
+
+The funding type of school is shown to be another notable indicator of
+completion rate. Private For-Profit universities fall far below Public 
+universities in completion rate. Private Non-Profit universities have a 
+noticable, if not exceptional, advantage over Public schools.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height = 6, Completion_and_Tuition}
+# 
+comp_in <- ggplot(aes(x=TUITIONFEE_IN, y=COMPLETION_FIVE_YRS),
+                  data=ed_data) +
+       geom_jitter(alpha=0.5) +
+       stat_smooth(method = 'lm', col = 'green') +
+       ggtitle('Completion Rate by Tuition') 
+
+comp_out <- ggplot(aes(x=TUITIONFEE_OUT, y=COMPLETION_FIVE_YRS),
+                   data=ed_data) +
+       geom_jitter(alpha=0.5) +
+       stat_smooth(method = 'lm', col = 'green')
+
+multiplot(comp_in, comp_out)
+
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Completion_and_Tuition_c}
+# 
+print('Correlation: In-State Tuition and Completion Rate')
+cor_comp_tuit <- subset(ed_data,
+                        !is.na(ed_data$TUITIONFEE_OUT) &
+                        !is.na(ed_data$COMPLETION_FIVE_YRS))
+
+cor(cor_comp_tuit$TUITIONFEE_IN, cor_comp_tuit$COMPLETION_FIVE_YRS)
+print('Correlation: Out-of-State Tuition and Completion Rate')
+cor(cor_comp_tuit$TUITIONFEE_OUT, cor_comp_tuit$COMPLETION_FIVE_YRS)
+```
+
+
+Out-of-state tuition appears to be a decent indicator for completion rate. 
+In-state tuition follows a similar pattern, but clustering (likely from tuition
+subsidies) ruins the trend.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height = 6, Completion_and_Tuition_2}
+# 
+ggplot(aes(x=TUITIONFEE_OUT, y=COMPLETION_FIVE_YRS,
+           group=floor(TUITIONFEE_OUT/5000)), data=ed_data) +
+       geom_boxplot()
+
+```
+
+Binning out-of-state tuition into a box-plot makes the trend a little easier to 
+follow.
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Completion_and_Retention}
+# 
+ggplot(aes(x=RETENTION, y=COMPLETION_FIVE_YRS),
+       data=subset(ed_data, ed_data$RETENTION > 0)) +
+       geom_jitter(alpha=0.5) +
+       stat_smooth(method = 'lm', col = 'green') +
+       ggtitle('Completion Rate by Retention') 
+
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Completion_and_Retention_c}
+# 
+print('Correlation: Retention and Completion Rate')
+cor_comp_ret <- subset(ed_data,
+                        !is.na(ed_data$RETENTION) &
+                        !is.na(ed_data$COMPLETION_FIVE_YRS))
+
+cor(cor_comp_ret$RETENTION, cor_comp_ret$COMPLETION_FIVE_YRS)
+
+```
+
+Retention is related to completion rates. This makes sense, since
+students not retained cannot graduate (though students who are retained may take
+longer than five years to graduate).
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=5, Completion_and_Exclusivity}
+# 
+comp_adm <- ggplot(aes(x=ADM_RATE_ALL, y=COMPLETION_FIVE_YRS), data=ed_data) +
+       geom_point(alpha=0.5) +
+       stat_smooth(method = 'lm', col = 'green') +
+       ggtitle('Completion Rate by Admission') 
+
+comp_enroll <- ggplot(aes(x=UNDERGRAD_ENROLL, y=COMPLETION_FIVE_YRS),
+                      data=ed_data) +
+       geom_point(alpha=0.5) +
+       coord_cartesian(xlim=c(0,10000)) +
+       stat_smooth(method = 'lm', col = 'green') +
+       ggtitle('Completion Rate by Undergraduate Enrollment') 
+
+multiplot(comp_adm, comp_enroll)
+
+```
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Completion_and_Adm_c}
+# 
+print('Correlation: Admission Rate and Completion Rate')
+cor_adm_ret <- subset(ed_data,
+                        !is.na(ed_data$ADM_RATE_ALL) &
+                        !is.na(ed_data$COMPLETION_FIVE_YRS))
+
+cor(cor_adm_ret$ADM_RATE_ALL, cor_adm_ret$COMPLETION_FIVE_YRS)
+
+print('Correlation: Enrollment and Completion Rate')
+cor_en_ret <- subset(ed_data,
+                        !is.na(ed_data$UNDERGRAD_ENROLL) &
+                        !is.na(ed_data$COMPLETION_FIVE_YRS))
+
+cor(cor_en_ret$UNDERGRAD_ENROLL, cor_en_ret$COMPLETION_FIVE_YRS)
+
+```
+
+Neither admission rate or undergraduate enrollment seem to be related to
+completion rate. 
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Completion_and_Debt}
+# 
+ggplot(aes(x=GRAD_DEBT_MDN, y=COMPLETION_FIVE_YRS), data=ed_data) +
+       geom_jitter(alpha=0.5) +
+       ggtitle('Completion Rate by Median Graduate Debt') 
+
+```
+
+The median debt of graduating students does not appear to have any discernable
+relationship to completion rate.
+
+# Bivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. How did the feature(s) of interest vary with other features in \
+the dataset?
+
+Out-of-state tuition, student retention, the funding type of university, and the
+region of the university all seem to have some relationship to completion rates.
+The size of the university and its exclusivity (admission rate) have less 
+bearing. Likewise, the median debt of a graduate seem unrelated to completion 
+rate.
+
+### Did you observe any interesting relationships between the other features \
+(not the main feature(s) of interest)?
+
+In-state tuition and out-of-state tuition are correlated, which is to be 
+expected, but the shape of their scatter plots offers some interesting insight
+into how tuition rates are set. There's a strong clustering around the \$7,000
+mark and a break before the \$20,000 mark. Following \$20,000, in-state tuition 
+looks nearly identical to out-of-state tuition. This shape implies that 
+universities drawinga distinction between in-state and out-of-state tuition have
+rates that are less than \$20,000.
+
+Median graduate debt also exhibits a strange patterning. Hard lines exist
+at the \$25,000 and \$27,000 values, utterly independent of completion rate.
+This suggests a "standard value" of sorts that universities and financial aid
+packages aim for.
+
+### What was the strongest relationship you found?
+
+The funding type of university has a noticable relationship to its completion
+rate. For-profit universities have, on average, lower completion rates than
+either public or non-profit universities.
+
+# Multivariate Plots Section
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Type_Completion_Tuition}
+
+ggplot(aes(x=TUITIONFEE_OUT, y=COMPLETION_FIVE_YRS, colour=FUNDING_TYPE),
+       data=ed_data) +
+       geom_jitter(alpha=0.5)
+
+```
+
+```{r echo=FALSE, fig.height=5, fig.width=10, message=FALSE, warning=FALSE, Type_Completion_Tuition_Region}
+
+ggplot(aes(x=TUITIONFEE_OUT, y=COMPLETION_FIVE_YRS, colour=FUNDING_TYPE),
+       data=ed_data) +
+       geom_jitter(alpha=0.5) +
+       facet_wrap(~REGION)
+
+```
+
+Adding funding type and region to the plot outlines an interesting divide
+between universities. For-Profit universities make up the lowest completion
+rates and tuitions. Non-Profit universities comprise the majority of 
+high-tuition, high-completion rate schools. Public universities generally fall 
+in-between.
+
+Each region seems to experience this discrepency in a different way. Region 9
+(U.S. Territories) has a surprising number of non-profit universities. Region 8
+(West Coast) seems to go against the trend with an odd patterning of public
+and non-profit schools. Region 5 (Southeast) has so many universities that it's
+hard to see a trend.
+
+
+```{r echo=FALSE, fig.width=8, message=FALSE, warning=FALSE, Type_Completion_Retention}
+# 
+ggplot(aes(x=RETENTION, y=COMPLETION_FIVE_YRS, colour=FUNDING_TYPE),
+       data=subset(ed_data, ed_data$RETENTION > 0)) +
+       geom_jitter(alpha=0.5) +
+       facet_wrap(~FUNDING_TYPE) +
+       stat_smooth(method = 'lm', col = 'green') +
+       ggtitle('Completion Rate by Retention') 
+
+```
+
+Categorizing funding types by color gives this plot a new story to tell. Public
+universities manifest the most consistent relationship while non-profits are 
+more erratic. For-profit universities, confusingly, show no pattern. That would 
+imply that there is no connection between the number of students that graduate 
+in five years and the number of students that choose to stay each year.
+
+
+```{r echo=FALSE, message=FALSE, warning=FALSE, Type_Completion_Debt}
+# 
+ggplot(aes(x=GRAD_DEBT_MDN, y=COMPLETION_FIVE_YRS, colour=FUNDING_TYPE),
+       data=ed_data) +
+       geom_jitter(alpha=0.5) +
+       ggtitle('Completion Rate by Median Graduate Debt') 
+
+```
+
+```{r echo=FALSE, fig.width=10, message=FALSE, warning=FALSE, Type_Completion_Debt_2}
+# 
+ggplot(aes(x=GRAD_DEBT_MDN, y=COMPLETION_FIVE_YRS, colour=FUNDING_TYPE),
+       data=ed_data) +
+       geom_jitter(alpha=0.5) +
+       facet_wrap(~FUNDING_TYPE) +
+       ggtitle('Completion Rate by Median Graduate Debt') 
+
+```
+This plot had previously been an enigma. Looking through the lens of 
+funding type, however, shows useful patterns. Public and non-profit universities
+have a fairly similar structure with graduate debt. Non-profits in particular
+show hard lines at 25,000 and 27,000.
+
+For-profit universities show the highest amount of debt. I find this surprising,
+given it was previously established that they have lower tuition rates on
+average.
+
+# Multivariate Analysis
+
+### Talk about some of the relationships you observed in this part of the \
+investigation. Were there features that strengthened each other in terms of \
+looking at your feature(s) of interest?
+
+Tying together out-of-state tuition, university funding type, and region proved
+a very effective means for understanding completion rates. Independently they
+have weak relationships to one another, but when drawn together, they show some
+remarkable patterns. 
+
+### Were there any interesting or surprising interactions between features?
+
+That for-profit schools have some of the lowest tuitions but highest graduate
+debts was unexpected (and worrisome). I would be curious to discover why this
+is the case. Perhaps there are financial aid restrictions in play? Or is it
+the demographics?
+
+For-profit schools seem strange on the whole. In graduate debt and retention,
+they follow completely different patterns than other universities. Is this
+because of differences in student demographic? Or something else entirely?
+
+### OPTIONAL: Did you create any models with your dataset? Discuss the \
+strengths and limitations of your model.
+
+
+N/A
+
+------
+
+# Final Plots and Summary
+
+
+### Plot One
+```{r echo=FALSE,  Plot_One}
+# University by Coordiantes
+ggplot(aes(x=LONGITUDE, LATITUDE),
+       data=subset(ed_data, ed_data$LONGITUDE < 0 &
+                     ed_data$LONGITUDE > -130 &
+                     ed_data$LATITUDE > 25)) +
+       geom_jitter(aes(colour=REGION), alpha=0.25) +
+       ggtitle('Mainland U.S. Universities') 
+```
+
+### Description One
+
+This plot simulataneously outlines the relative proportions of universities in
+the U.S. while providing context for the "Region" variable that's referenced
+throughout. Readers can quickly deduce that the majority of universities exist
+in the Eastern U.S. They can also see the vivid outline of the West Coast and
+blatant sparsity of the Midwest.
+
+### Plot Two
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height=7, fig.width=12, Plot_Two}
+ggplot(aes(x=TUITIONFEE_OUT, y=COMPLETION_FIVE_YRS, colour=FUNDING_TYPE),
+       data=ed_data) +
+       geom_jitter(alpha=0.5) +
+       facet_wrap(~REGION) +
+       xlab('Out-of-State Tuition (USD)') +
+       ylab('Percentage of Students Graduating Within Five Years') +
+       ggtitle('Regional Map of Five Year Completion vs. Tuition') +
+       scale_x_continuous(labels = dollar)
+```
+
+### Description Two
+
+There's a lot going on in this map, but it demonstrates some crucial
+relationships. First, it shows the relationship between university completion
+rate and tuition. Some regions demonstrate this more than others, but the 
+overall trend can be observed. Second, it illustrates a national pattern where 
+public, non-profit, and for-profit schools exist on a spectrum. Dividing the map
+by region mitigates the number of outliers viewers have to sift through. Lastly,
+the chart juxtoposes the various regions with one another. It's easy to see at a
+glance that regions 9 and 7 have fewer universities than 5 or 2.
+
+### Plot Three
+```{r echo=FALSE, message=FALSE, warning=FALSE, fig.height = 6, Plot_Three}
+comp_in <- ggplot(aes(x=TUITIONFEE_IN, y=COMPLETION_FIVE_YRS),
+                  data=ed_data) +
+       geom_jitter(alpha=0.5) +
+       stat_smooth(method = 'lm', col = 'green') +
+       ggtitle('Completion Rate by Tuition') +
+       xlab('In-State Tuition (USD)') +
+       ylab('Five Year Completion Rate') +
+       scale_x_continuous(labels = dollar)
+
+comp_out <- ggplot(aes(x=TUITIONFEE_OUT, y=COMPLETION_FIVE_YRS),
+                   data=ed_data) +
+       geom_jitter(alpha=0.5) +
+       stat_smooth(method = 'lm', col = 'green') +
+       xlab('Out-of-State Tuition (USD)') +
+       ylab('Five Year Completion Rate') +
+       scale_x_continuous(labels = dollar)
+
+multiplot(comp_in, comp_out)
+```
+
+### Description Three
+
+This plot was an unexpected surprise. It shows the overall pattern of completion
+rate and tution fees, but also the effect of in-state tuition. There isn't a
+simple left-shift like what one might expect; rather, it's as though there's
+some gravitational force pulling points towards the \$5,000 mark.
+
+It's also interesting to note that the plot is relatively unaffected past the
+\$20,000 mark. Given the similarity in shapes between the two graphs, one
+can deduce that few schools beyond that point offer different in-state tuitions.
+
+------
+
+# Reflection
+
+The College Scorecard is a vast repostiory of information across several years.
+This analysis covered data for four-year universities in the year 2014. I placed
+an emphasis on fifteen variables in particular, which detailed location,
+admissions, finances, and identification.
+
+My focus was on investigating the completion rate of various universities.
+Tuition rates, university funding types, and region were found to be
+influential. The most significant influence came from the university funding
+type, as for-profit schools on average have half the completion rate of 
+non-profit schools. Similarly, higher tuition rates seem to go hand-in-hand with
+higher completion rates.
+
+There was some difficulty in importing, cleaning, and understanding the College
+Scorecard data. The data itself is massive; my spreadsheet program could not
+open the .csv because there were simply too many columns. Many of the column
+names were unintuitive as well (C150_4 comes to mind). 
+
+I was pleased with how questions raised by the Bivariate Plots were answered by
+the Multivariate Plots. Looking at the data through the lens of university
+funding type showed just how distinct each group is. Future work could certainly
+be done with regards to investigating the patterns within each funding type, and
+across multiple years.
+
