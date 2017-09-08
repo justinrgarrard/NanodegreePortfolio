@@ -3,9 +3,10 @@ A collection of projects completed as part of Udacity's Data Analyst Nanodegree.
 
 1. Jupyter Data Analysis
 2. R Exploratory Data Analysis
-3. SQL Data Wrangling
-4. Inferential Statistics
-5. Scikit-Learn Machine Learning
+3. Tableau Visualization
+4. SQL Data Wrangling
+5. Inferential Statistics
+6. Scikit-Learn Machine Learning
 
 
 ### Jupyter Data Analysis
@@ -44,6 +45,23 @@ completion rates.
 for-profit) and completion rate.
 
 * Uses R and ggplots.
+
+
+### Tableau Data Visualization
+**U.S. College Statistics**
+
+This project focused specifically on for-profit universities. Unlike the R
+data exploration project (which used the same dataset), this project analyzed
+data across many years.
+
+https://public.tableau.com/views/NanodegreeDataVisProjectII/For-ProfitUniversityConcerns?:embed=y&:display_count=yes
+
+*Highlights*
+
+* A Tableau Story which details some of the concerns surrounding for-profit
+universities.
+
+* Multiple interactive charts that can filtered by year.
 
 
 ### SQL Data Wrangling
